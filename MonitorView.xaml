@@ -1,0 +1,65 @@
+<UserControl x:Class="FactorialApp.MonitorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:FactorialApp"
+             xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF">
+    <UserControl.Resources>
+        <local:TemperatureColorConverter x:Key="TempColorConverter"/>
+    </UserControl.Resources>
+    <Grid Margin="30" Background="#1E1E2E">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="150"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Background="#2A2A3D" CornerRadius="10"
+                Padding="15" Margin="0,5">
+            <StackPanel>
+                <TextBlock Text="TEMPERATURE" Foreground="#888899" FontSize="12" FontWeight="Bold"/>
+                <TextBlock Text="{Binding Temperature}" FontSize="32" FontWeight="Bold"
+                           Foreground="{Binding TemperatureColor}"/>
+                <TextBlock Text="°C" Foreground="#888899" FontSize="14"/>
+                <lvc:CartesianChart Series="{Binding TemperatureSeries}" Height="180"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Background="#2A2A3D" CornerRadius="10"
+                Padding="15" Margin="0,5">
+            <StackPanel>
+                <TextBlock Text="HUMIDITY" Foreground="#888899" FontSize="12" FontWeight="Bold"/>
+                <TextBlock Text="{Binding Humidity}" FontSize="32" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="%" Foreground="#888899" FontSize="14"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Background="#2A2A3D" CornerRadius="10"
+                Padding="15" Margin="0,5">
+            <StackPanel>
+                <TextBlock Text="PRESSURE" Foreground="#888899" FontSize="12" FontWeight="Bold"/>
+                <TextBlock Text="{Binding Pressure}" FontSize="32" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="hPa" Foreground="#888899" FontSize="14"/>
+            </StackPanel>
+        </Border>
+
+        <Button Content="Start Monitoring" Grid.Row="3" Grid.Column="0"
+                Command="{Binding StartCommand}" Height="40" Margin="0,20,5,0" FontSize="14"/>
+        <Button Content="Stop" Grid.Row="3" Grid.Column="1"
+                Command="{Binding StopCommand}" Height="40" Margin="5,20,0,0" FontSize="14"/>
+
+        <Label Content="Motor Status:" Grid.Row="4" Grid.Column="0"
+               Foreground="White" FontSize="16" VerticalAlignment="Center"/>
+        <TextBlock Text="{Binding MotorStatus}" Grid.Row="4" Grid.Column="1"
+                   Foreground="LightGreen" FontSize="18" VerticalAlignment="Center"/>
+
+        <Button Content="Toggle Motor" Grid.Row="5" Grid.ColumnSpan="2"
+                Command="{Binding ToggleMotorCommand}" Height="35" Margin="0,10,0,0"/>
+    </Grid>
+</UserControl>
