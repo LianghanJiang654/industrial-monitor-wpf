@@ -64,7 +64,22 @@ namespace FactorialApp
             get { return _pressure; }
             set { _pressure = value; OnPropertyChanged(nameof(Pressure)); }
         }
+        private string _axisPosition = "0";
+        private string _targetPosition = "100";
 
+        public string AxisPosition
+        {
+            get { return _axisPosition; }
+            set { _axisPosition = value; OnPropertyChanged(nameof(AxisPosition)); }
+        }
+        public ObservableCollection<string> LogEntries { get; set; } = new ObservableCollection<string>();
+        public string TargetPosition
+        {
+            get { return _targetPosition; }
+            set { _targetPosition = value; OnPropertyChanged(nameof(TargetPosition)); }
+        }
+
+        public ICommand MoveAxisCommand { get; }
         public string MotorStatus
         {
             get { return _motorStatus; }
@@ -103,8 +118,14 @@ namespace FactorialApp
             ShowSettingsCommand = new RelayCommand(() => CurrentView = new SettingsView { DataContext = this });
 
             CurrentView = new MonitorView { DataContext = this };
+            MoveAxisCommand = new RelayCommand(ExecuteMoveAxis);
         }
-        
+        private void ExecuteMoveAxis()
+        {
+            string command = "MOVE 4 " + TargetPosition;
+            ReadRegister(command);
+            AddLog("Axis move command sen, target:" + TargetPosition);
+        }
         private async void ExecuteStart()
         {
             cts = new CancellationTokenSource();
@@ -124,7 +145,10 @@ namespace FactorialApp
                 }
                 Humidity = ReadRegister("READ 1");
                 Pressure = ReadRegister("READ 2");
-
+                
+                Pressure = ReadRegister("READ 2");
+                AxisPosition = ReadRegister("READ 4");
+                
                 await Task.Delay(2000, token).ContinueWith(t => { });
             }
         }
@@ -139,30 +163,54 @@ namespace FactorialApp
             string command = MotorStatus == "Stopped" ? "WRITE 3 1" : "WRITE 3 0";
             string result = ReadRegister(command);
             MotorStatus = MotorStatus == "Stopped" ? "Running" : "Stopped";
+            AddLog("Motor toggled to " + MotorStatus);
         }
 
+        private void AddLog(string message)
+        {
+            string timestamp = DateTime.Now.ToString("HH:mm:ss");
+            LogEntries.Insert(0, $"[{timestamp}] {message}");
+            if (LogEntries.Count > 50)
+            {
+                LogEntries.RemoveAt(LogEntries.Count - 1);
+            }
+        }
+        
         private string ReadRegister(string command)
         {
-            try
+            int maxRetries = 3;
+            int retryCount = 0;
+
+            while (retryCount < maxRetries)
             {
-                TcpClient client = new TcpClient();
-                client.Connect("10.24.50.13", 5001);
+                try
+                {
+                    TcpClient client = new TcpClient();
+                    client.Connect("192.168.2.130", 5001);
 
-                NetworkStream stream = client.GetStream();
-                byte[] messageBytes = Encoding.ASCII.GetBytes(command);
-                stream.Write(messageBytes, 0, messageBytes.Length);
+                    NetworkStream stream = client.GetStream();
+                    byte[] messageBytes = Encoding.ASCII.GetBytes(command);
+                    stream.Write(messageBytes, 0, messageBytes.Length);
 
-                byte[] buffer = new byte[1024];
-                int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                string response = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+                    byte[] buffer = new byte[1024];
+                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                    string response = Encoding.ASCII.GetString(buffer, 0, bytesRead);
 
-                client.Close();
-                return response;
+                    client.Close();
+                    return response;
+                }
+                catch (Exception ex)
+                {
+                    retryCount++;
+                    if (retryCount >= maxRetries)
+                    {
+                        return "Error: " + ex.Message;
+                    }
+                    Thread.Sleep(500);
+                }
             }
-            catch (Exception ex)
-            {
-                return "Error";
-            }
+
+            return "Error: Max retries exceeded";
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
