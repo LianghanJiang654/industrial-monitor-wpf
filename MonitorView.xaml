@@ -40,6 +40,7 @@
                 <TextBlock Text="HUMIDITY" Foreground="#888899" FontSize="12" FontWeight="Bold"/>
                 <TextBlock Text="{Binding Humidity}" FontSize="32" FontWeight="Bold" Foreground="White"/>
                 <TextBlock Text="%" Foreground="#888899" FontSize="14"/>
+                <lvc:CartesianChart Series="{Binding HumiditySeries}" Height="180"/>
             </StackPanel>
         </Border>
 
@@ -49,6 +50,7 @@
                 <TextBlock Text="PRESSURE" Foreground="#888899" FontSize="12" FontWeight="Bold"/>
                 <TextBlock Text="{Binding Pressure}" FontSize="32" FontWeight="Bold" Foreground="White"/>
                 <TextBlock Text="hPa" Foreground="#888899" FontSize="14"/>
+                <lvc:CartesianChart Series="{Binding PressureSeries}" Height="180"/>
             </StackPanel>
         </Border>
 

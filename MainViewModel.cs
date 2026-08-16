@@ -1,6 +1,4 @@
-
-
-   using System;
+using System;
 using System.ComponentModel;
 using System.Net.Sockets;
 using System.Text;
@@ -14,6 +12,7 @@ using SkiaSharp;
 using System.Collections.ObjectModel;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Microsoft.Data.Sqlite;
 namespace FactorialApp
 {
     public class MainViewModel : INotifyPropertyChanged
@@ -23,7 +22,7 @@ namespace FactorialApp
         private string _pressure = "--";
         private string _motorStatus = "Stopped";
         private CancellationTokenSource? cts;
-
+        private string dbPath = "Data Source=monitor.db";
         private object _currentView;
 
         public object CurrentView
@@ -31,7 +30,10 @@ namespace FactorialApp
             get { return _currentView; }
             set { _currentView = value; OnPropertyChanged(nameof(CurrentView)); }
         }
-
+        public ISeries[] HumiditySeries { get; set; }
+        public ISeries[] PressureSeries { get; set; }
+        private ObservableCollection<double> humidityHistory = new ObservableCollection<double>();
+        private ObservableCollection<double> pressureHistory = new ObservableCollection<double>();
         public ICommand ShowMonitorCommand { get; }
         public ICommand ShowSettingsCommand { get; }
         public Brush TemperatureColor
@@ -101,6 +103,7 @@ namespace FactorialApp
         
         public MainViewModel()
         {
+            InitializeDatabase();
             StartCommand = new RelayCommand(ExecuteStart);
             StopCommand = new RelayCommand(ExecuteStop);
             ToggleMotorCommand = new RelayCommand(ExecuteToggleMotor);
@@ -119,7 +122,52 @@ namespace FactorialApp
 
             CurrentView = new MonitorView { DataContext = this };
             MoveAxisCommand = new RelayCommand(ExecuteMoveAxis);
+            HumiditySeries = new ISeries[]
+            {
+                new LineSeries<double>
+                {
+                    Values = humidityHistory,
+                    Fill = null,
+                    Stroke = new SolidColorPaint(SKColors.DeepSkyBlue) { StrokeThickness = 3 }
+                }
+            };
+
+            PressureSeries = new ISeries[]
+            {
+                new LineSeries<double>
+                {
+                    Values = pressureHistory,
+                    Fill = null,
+                    Stroke = new SolidColorPaint(SKColors.LimeGreen) { StrokeThickness = 3 }
+                }
+            };
         }
+        
+        private void InitializeDatabase()
+        {
+            using var connection = new SqliteConnection(dbPath);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+        CREATE TABLE IF NOT EXISTS Logs (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Timestamp TEXT,
+            Message TEXT
+        )";
+            command.ExecuteNonQuery();
+
+            var selectCommand = connection.CreateCommand();
+            selectCommand.CommandText = "SELECT Timestamp, Message FROM Logs ORDER BY Id DESC LIMIT 50";
+            using var reader = selectCommand.ExecuteReader();
+            while (reader.Read())
+            {
+                string timestamp = reader.GetString(0);
+                string message = reader.GetString(1);
+                LogEntries.Add($"[{timestamp}] {message}");
+            }
+        }
+        
         private void ExecuteMoveAxis()
         {
             string command = "MOVE 4 " + TargetPosition;
@@ -143,8 +191,21 @@ namespace FactorialApp
                         temperatureHistory.RemoveAt(0);
                     }
                 }
-                Humidity = ReadRegister("READ 1");
-                Pressure = ReadRegister("READ 2");
+                string humResult = ReadRegister("READ 1");
+                Humidity = humResult;
+                if (double.TryParse(humResult, out double humValue))
+                {
+                    humidityHistory.Add(humValue);
+                    if (humidityHistory.Count > 20) humidityHistory.RemoveAt(0);
+                }
+
+                string presResult = ReadRegister("READ 2");
+                Pressure = presResult;
+                if (double.TryParse(presResult, out double presValue))
+                {
+                    pressureHistory.Add(presValue);
+                    if (pressureHistory.Count > 20) pressureHistory.RemoveAt(0);
+                }
                 
                 Pressure = ReadRegister("READ 2");
                 AxisPosition = ReadRegister("READ 4");
@@ -174,6 +235,14 @@ namespace FactorialApp
             {
                 LogEntries.RemoveAt(LogEntries.Count - 1);
             }
+
+            using var connection = new SqliteConnection(dbPath);
+            connection.Open();
+            var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO Logs (Timestamp, Message) VALUES ($timestamp, $message)";
+            command.Parameters.AddWithValue("$timestamp", timestamp);
+            command.Parameters.AddWithValue("$message", message);
+            command.ExecuteNonQuery();
         }
         
         private string ReadRegister(string command)
