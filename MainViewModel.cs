@@ -98,7 +98,8 @@ namespace FactorialApp
         public ICommand StartCommand { get; }
         public ICommand StopCommand { get; }
         public ICommand ToggleMotorCommand { get; }
-
+        public ICommand AcknowledgeAlarmCommand { get; }
+        public ObservableCollection<AlarmItem> Alarms { get; set; } = new ObservableCollection<AlarmItem>();
        
         
         public MainViewModel()
@@ -107,6 +108,7 @@ namespace FactorialApp
             StartCommand = new RelayCommand(ExecuteStart);
             StopCommand = new RelayCommand(ExecuteStop);
             ToggleMotorCommand = new RelayCommand(ExecuteToggleMotor);
+            AcknowledgeAlarmCommand = new RelayCommand<AlarmItem>(ExecuteAcknowledgeAlarm);
 
             TemperatureSeries = new ISeries[]
             {
@@ -156,6 +158,16 @@ namespace FactorialApp
             Message TEXT
         )";
             command.ExecuteNonQuery();
+            
+            var alarmTableCommand = connection.CreateCommand();
+            alarmTableCommand.CommandText = @"
+    CREATE TABLE IF NOT EXISTS Alarms (
+        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+        Timestamp TEXT,
+        Message TEXT,
+        IsAcknowledged INTEGER DEFAULT 0
+    )";
+            alarmTableCommand.ExecuteNonQuery();
 
             var selectCommand = connection.CreateCommand();
             selectCommand.CommandText = "SELECT Timestamp, Message FROM Logs ORDER BY Id DESC LIMIT 50";
@@ -165,6 +177,19 @@ namespace FactorialApp
                 string timestamp = reader.GetString(0);
                 string message = reader.GetString(1);
                 LogEntries.Add($"[{timestamp}] {message}");
+            }
+            var selectAlarmsCommand = connection.CreateCommand();
+            selectAlarmsCommand.CommandText = "SELECT Id, Timestamp, Message, IsAcknowledged FROM Alarms ORDER BY Id DESC LIMIT 50";
+            using var alarmReader = selectAlarmsCommand.ExecuteReader();
+            while (alarmReader.Read())
+            {
+                Alarms.Add(new AlarmItem
+                {
+                    Id = alarmReader.GetInt32(0),
+                    Timestamp = alarmReader.GetString(1),
+                    Message = alarmReader.GetString(2),
+                    IsAcknowledged = alarmReader.GetInt32(3) == 1
+                });
             }
         }
         
@@ -191,6 +216,11 @@ namespace FactorialApp
                         temperatureHistory.RemoveAt(0);
                     }
                 }
+                if (double.TryParse(tempResult, out double tv) && int.TryParse(_temperatureThreshold, out int threshold) && tv > threshold)
+                {
+                    RaiseAlarm($"Temperature exceeded threshold: {tempResult} > {threshold}");
+                }
+                
                 string humResult = ReadRegister("READ 1");
                 Humidity = humResult;
                 if (double.TryParse(humResult, out double humValue))
@@ -207,7 +237,6 @@ namespace FactorialApp
                     if (pressureHistory.Count > 20) pressureHistory.RemoveAt(0);
                 }
                 
-                Pressure = ReadRegister("READ 2");
                 AxisPosition = ReadRegister("READ 4");
                 
                 await Task.Delay(2000, token).ContinueWith(t => { });
@@ -226,7 +255,30 @@ namespace FactorialApp
             MotorStatus = MotorStatus == "Stopped" ? "Running" : "Stopped";
             AddLog("Motor toggled to " + MotorStatus);
         }
-
+        private void RaiseAlarm(string message)
+        {
+            string timestamp = DateTime.Now.ToString("HH:mm:ss");
+        
+            using var connection = new SqliteConnection(dbPath);
+            connection.Open();
+            var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO Alarms (Timestamp, Message, IsAcknowledged) VALUES ($timestamp, $message, 0)";
+            command.Parameters.AddWithValue("$timestamp", timestamp);
+            command.Parameters.AddWithValue("$message", message);
+            command.ExecuteNonQuery();
+        
+            var idCommand = connection.CreateCommand();
+            idCommand.CommandText = "SELECT last_insert_rowid()";
+            long newId = (long)idCommand.ExecuteScalar();
+        
+            Alarms.Insert(0, new AlarmItem
+            {
+                Id = (int)newId,
+                Timestamp = timestamp,
+                Message = message,
+                IsAcknowledged = false
+            });
+        }
         private void AddLog(string message)
         {
             string timestamp = DateTime.Now.ToString("HH:mm:ss");
@@ -244,7 +296,19 @@ namespace FactorialApp
             command.Parameters.AddWithValue("$message", message);
             command.ExecuteNonQuery();
         }
-        
+        private void ExecuteAcknowledgeAlarm(AlarmItem alarm)
+        {
+            if (alarm == null) return;
+
+            alarm.IsAcknowledged = true;
+
+            using var connection = new SqliteConnection(dbPath);
+            connection.Open();
+            var command = connection.CreateCommand();
+            command.CommandText = "UPDATE Alarms SET IsAcknowledged = 1 WHERE Id = $id";
+            command.Parameters.AddWithValue("$id", alarm.Id);
+            command.ExecuteNonQuery();
+        }
         private string ReadRegister(string command)
         {
             int maxRetries = 3;
@@ -255,7 +319,7 @@ namespace FactorialApp
                 try
                 {
                     TcpClient client = new TcpClient();
-                    client.Connect("192.168.2.130", 5001);
+                    client.Connect("10.24.48.31", 5001);
 
                     NetworkStream stream = client.GetStream();
                     byte[] messageBytes = Encoding.ASCII.GetBytes(command);
