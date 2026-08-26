@@ -10,9 +10,9 @@ using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
 using SkiaSharp;
 using System.Collections.ObjectModel;
-using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.Data.Sqlite;
+
 namespace FactorialApp
 {
     public class MainViewModel : INotifyPropertyChanged
@@ -30,12 +30,14 @@ namespace FactorialApp
             get { return _currentView; }
             set { _currentView = value; OnPropertyChanged(nameof(CurrentView)); }
         }
+
         public ISeries[] HumiditySeries { get; set; }
         public ISeries[] PressureSeries { get; set; }
         private ObservableCollection<double> humidityHistory = new ObservableCollection<double>();
         private ObservableCollection<double> pressureHistory = new ObservableCollection<double>();
         public ICommand ShowMonitorCommand { get; }
         public ICommand ShowSettingsCommand { get; }
+
         public Brush TemperatureColor
         {
             get
@@ -47,14 +49,15 @@ namespace FactorialApp
                 return Brushes.White;
             }
         }
-        
+
         public string Temperature
         {
             get { return _temperature; }
-            set { _temperature = value; OnPropertyChanged(nameof(Temperature));OnPropertyChanged(nameof(TemperatureColor)); }
+            set { _temperature = value; OnPropertyChanged(nameof(Temperature)); OnPropertyChanged(nameof(TemperatureColor)); }
         }
         public ISeries[] TemperatureSeries { get; set; }
         private ObservableCollection<double> temperatureHistory = new ObservableCollection<double>();
+
         public string Humidity
         {
             get { return _humidity; }
@@ -66,33 +69,70 @@ namespace FactorialApp
             get { return _pressure; }
             set { _pressure = value; OnPropertyChanged(nameof(Pressure)); }
         }
-        private string _axisPosition = "0";
-        private string _targetPosition = "100";
 
-        public string AxisPosition
+        // ===== 多轴 XYZ =====
+        private string _axisXPosition = "0";
+        private string _axisYPosition = "0";
+        private string _axisZPosition = "0";
+        private string _targetX = "0";
+        private string _targetY = "0";
+        private string _targetZ = "0";
+
+        public string AxisXPosition
         {
-            get { return _axisPosition; }
-            set { _axisPosition = value; OnPropertyChanged(nameof(AxisPosition)); }
+            get { return _axisXPosition; }
+            set { _axisXPosition = value; OnPropertyChanged(nameof(AxisXPosition)); }
         }
+
+        public string AxisYPosition
+        {
+            get { return _axisYPosition; }
+            set { _axisYPosition = value; OnPropertyChanged(nameof(AxisYPosition)); }
+        }
+
+        public string AxisZPosition
+        {
+            get { return _axisZPosition; }
+            set { _axisZPosition = value; OnPropertyChanged(nameof(AxisZPosition)); }
+        }
+
+        public string TargetX
+        {
+            get { return _targetX; }
+            set { _targetX = value; OnPropertyChanged(nameof(TargetX)); }
+        }
+
+        public string TargetY
+        {
+            get { return _targetY; }
+            set { _targetY = value; OnPropertyChanged(nameof(TargetY)); }
+        }
+
+        public string TargetZ
+        {
+            get { return _targetZ; }
+            set { _targetZ = value; OnPropertyChanged(nameof(TargetZ)); }
+        }
+
+        public ICommand MoveXCommand { get; }
+        public ICommand MoveYCommand { get; }
+        public ICommand MoveZCommand { get; }
+        public ICommand JogStartCommand { get; }
+        public ICommand JogStopCommand { get; }
+
         public ObservableCollection<string> LogEntries { get; set; } = new ObservableCollection<string>();
-        public string TargetPosition
-        {
-            get { return _targetPosition; }
-            set { _targetPosition = value; OnPropertyChanged(nameof(TargetPosition)); }
-        }
 
-        public ICommand MoveAxisCommand { get; }
         public string MotorStatus
         {
             get { return _motorStatus; }
             set { _motorStatus = value; OnPropertyChanged(nameof(MotorStatus)); }
         }
-        private string _temperatureThreshold = "26";
 
+        private string _temperatureThreshold = "26";
         public string TemperatureThreshold
         {
             get { return _temperatureThreshold; }
-            set { _temperatureThreshold = value; OnPropertyChanged(nameof(TemperatureThreshold)); OnPropertyChanged(nameof(TemperatureColor));}
+            set { _temperatureThreshold = value; OnPropertyChanged(nameof(TemperatureThreshold)); OnPropertyChanged(nameof(TemperatureColor)); }
         }
 
         public ICommand StartCommand { get; }
@@ -100,8 +140,7 @@ namespace FactorialApp
         public ICommand ToggleMotorCommand { get; }
         public ICommand AcknowledgeAlarmCommand { get; }
         public ObservableCollection<AlarmItem> Alarms { get; set; } = new ObservableCollection<AlarmItem>();
-       
-        
+
         public MainViewModel()
         {
             InitializeDatabase();
@@ -109,6 +148,12 @@ namespace FactorialApp
             StopCommand = new RelayCommand(ExecuteStop);
             ToggleMotorCommand = new RelayCommand(ExecuteToggleMotor);
             AcknowledgeAlarmCommand = new RelayCommand<AlarmItem>(ExecuteAcknowledgeAlarm);
+
+            MoveXCommand = new RelayCommand(() => ExecuteMoveAxis("X", TargetX));
+            MoveYCommand = new RelayCommand(() => ExecuteMoveAxis("Y", TargetY));
+            MoveZCommand = new RelayCommand(() => ExecuteMoveAxis("Z", TargetZ));
+            JogStartCommand = new RelayCommand<string>(ExecuteJogStart);
+            JogStopCommand = new RelayCommand<string>(ExecuteJogStop);
 
             TemperatureSeries = new ISeries[]
             {
@@ -119,11 +164,11 @@ namespace FactorialApp
                     Stroke = new SolidColorPaint(SKColors.OrangeRed) { StrokeThickness = 3 }
                 }
             };
+
             ShowMonitorCommand = new RelayCommand(() => CurrentView = new MonitorView { DataContext = this });
             ShowSettingsCommand = new RelayCommand(() => CurrentView = new SettingsView { DataContext = this });
-
             CurrentView = new MonitorView { DataContext = this };
-            MoveAxisCommand = new RelayCommand(ExecuteMoveAxis);
+
             HumiditySeries = new ISeries[]
             {
                 new LineSeries<double>
@@ -144,7 +189,7 @@ namespace FactorialApp
                 }
             };
         }
-        
+
         private void InitializeDatabase()
         {
             using var connection = new SqliteConnection(dbPath);
@@ -158,7 +203,7 @@ namespace FactorialApp
             Message TEXT
         )";
             command.ExecuteNonQuery();
-            
+
             var alarmTableCommand = connection.CreateCommand();
             alarmTableCommand.CommandText = @"
     CREATE TABLE IF NOT EXISTS Alarms (
@@ -178,6 +223,7 @@ namespace FactorialApp
                 string message = reader.GetString(1);
                 LogEntries.Add($"[{timestamp}] {message}");
             }
+
             var selectAlarmsCommand = connection.CreateCommand();
             selectAlarmsCommand.CommandText = "SELECT Id, Timestamp, Message, IsAcknowledged FROM Alarms ORDER BY Id DESC LIMIT 50";
             using var alarmReader = selectAlarmsCommand.ExecuteReader();
@@ -192,13 +238,26 @@ namespace FactorialApp
                 });
             }
         }
-        
-        private void ExecuteMoveAxis()
+
+        private void ExecuteMoveAxis(string axis, string target)
         {
-            string command = "MOVE 4 " + TargetPosition;
-            ReadRegister(command);
-            AddLog("Axis move command sen, target:" + TargetPosition);
+            ReadRegister($"MOVE {axis} {target}");
+            AddLog($"Axis {axis} move command sent, target: {target}");
         }
+
+        private void ExecuteJogStart(string parameter)
+        {
+            string[] parts = parameter.Split(',');
+            string axis = parts[0];
+            string direction = parts[1];
+            ReadRegister($"JOG {axis} {direction}");
+        }
+
+        private void ExecuteJogStop(string axis)
+        {
+            ReadRegister($"JOG {axis} 0");
+        }
+
         private async void ExecuteStart()
         {
             cts = new CancellationTokenSource();
@@ -220,7 +279,7 @@ namespace FactorialApp
                 {
                     RaiseAlarm($"Temperature exceeded threshold: {tempResult} > {threshold}");
                 }
-                
+
                 string humResult = ReadRegister("READ 1");
                 Humidity = humResult;
                 if (double.TryParse(humResult, out double humValue))
@@ -236,9 +295,11 @@ namespace FactorialApp
                     pressureHistory.Add(presValue);
                     if (pressureHistory.Count > 20) pressureHistory.RemoveAt(0);
                 }
-                
-                AxisPosition = ReadRegister("READ 4");
-                
+
+                AxisXPosition = ReadRegister("READPOS X");
+                AxisYPosition = ReadRegister("READPOS Y");
+                AxisZPosition = ReadRegister("READPOS Z");
+
                 await Task.Delay(2000, token).ContinueWith(t => { });
             }
         }
@@ -247,7 +308,7 @@ namespace FactorialApp
         {
             cts?.Cancel();
         }
-        
+
         private void ExecuteToggleMotor()
         {
             string command = MotorStatus == "Stopped" ? "WRITE 3 1" : "WRITE 3 0";
@@ -255,10 +316,11 @@ namespace FactorialApp
             MotorStatus = MotorStatus == "Stopped" ? "Running" : "Stopped";
             AddLog("Motor toggled to " + MotorStatus);
         }
+
         private void RaiseAlarm(string message)
         {
             string timestamp = DateTime.Now.ToString("HH:mm:ss");
-        
+
             using var connection = new SqliteConnection(dbPath);
             connection.Open();
             var command = connection.CreateCommand();
@@ -266,11 +328,11 @@ namespace FactorialApp
             command.Parameters.AddWithValue("$timestamp", timestamp);
             command.Parameters.AddWithValue("$message", message);
             command.ExecuteNonQuery();
-        
+
             var idCommand = connection.CreateCommand();
             idCommand.CommandText = "SELECT last_insert_rowid()";
             long newId = (long)idCommand.ExecuteScalar();
-        
+
             Alarms.Insert(0, new AlarmItem
             {
                 Id = (int)newId,
@@ -279,6 +341,7 @@ namespace FactorialApp
                 IsAcknowledged = false
             });
         }
+
         private void AddLog(string message)
         {
             string timestamp = DateTime.Now.ToString("HH:mm:ss");
@@ -296,6 +359,7 @@ namespace FactorialApp
             command.Parameters.AddWithValue("$message", message);
             command.ExecuteNonQuery();
         }
+
         private void ExecuteAcknowledgeAlarm(AlarmItem alarm)
         {
             if (alarm == null) return;
@@ -309,6 +373,7 @@ namespace FactorialApp
             command.Parameters.AddWithValue("$id", alarm.Id);
             command.ExecuteNonQuery();
         }
+
         private string ReadRegister(string command)
         {
             int maxRetries = 3;

@@ -64,15 +64,72 @@
                Foreground="White" FontSize="16" VerticalAlignment="Center"/>
         <TextBlock Text="{Binding MotorStatus}" Grid.Row="4" Grid.Column="1"
                    Foreground="LightGreen" FontSize="18" VerticalAlignment="Center"/>
-        <Border Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Background="#2A2A3D" CornerRadius="10"
-                Padding="15" Margin="0,10">
-            <StackPanel>
-                <TextBlock Text="AXIS CONTROL" Foreground="#888899" FontSize="12" FontWeight="Bold"/>
-                <TextBlock Text="{Binding AxisPosition}" FontSize="24" FontWeight="Bold" Foreground="White" Margin="0,5"/>
-                <TextBox Text="{Binding TargetPosition}" Height="30" FontSize="14" Margin="0,5"/>
-                <Button Content="Move Axis" Command="{Binding MoveAxisCommand}" Height="35" Margin="0,5"/>
-            </StackPanel>
-        </Border>
+       <Border Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Background="#2A2A3D" CornerRadius="10"
+        Padding="15" Margin="0,10">
+    <StackPanel>
+        <TextBlock Text="AXIS CONTROL" Foreground="#888899" FontSize="12" FontWeight="Bold" Margin="0,0,0,10"/>
+
+        <!-- X轴 -->
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="30"/>
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="70"/>
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="X" Foreground="White" FontWeight="Bold" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding AxisXPosition}" Foreground="White" VerticalAlignment="Center"/>
+            <TextBox Grid.Column="2" Text="{Binding TargetX}" Height="26" FontSize="12"/>
+            <Button Grid.Column="3" Content="Go" Command="{Binding MoveXCommand}" Height="26" Margin="5,0"/>
+            <Button Grid.Column="4" Content="◀" Width="30" Height="26"
+                    PreviewMouseDown="JogX_MinusDown" PreviewMouseUp="JogX_Up"/>
+            <Button Grid.Column="5" Content="▶" Width="30" Height="26" Margin="3,0,0,0"
+                    PreviewMouseDown="JogX_PlusDown" PreviewMouseUp="JogX_Up"/>
+        </Grid>
+
+        <!-- Y轴 -->
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="30"/>
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="70"/>
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Y" Foreground="White" FontWeight="Bold" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding AxisYPosition}" Foreground="White" VerticalAlignment="Center"/>
+            <TextBox Grid.Column="2" Text="{Binding TargetY}" Height="26" FontSize="12"/>
+            <Button Grid.Column="3" Content="Go" Command="{Binding MoveYCommand}" Height="26" Margin="5,0"/>
+            <Button Grid.Column="4" Content="◀" Width="30" Height="26"
+                    PreviewMouseDown="JogY_MinusDown" PreviewMouseUp="JogY_Up"/>
+            <Button Grid.Column="5" Content="▶" Width="30" Height="26" Margin="3,0,0,0"
+                    PreviewMouseDown="JogY_PlusDown" PreviewMouseUp="JogY_Up"/>
+        </Grid>
+
+        <!-- Z轴 -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="30"/>
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="70"/>
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Z" Foreground="White" FontWeight="Bold" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding AxisZPosition}" Foreground="White" VerticalAlignment="Center"/>
+            <TextBox Grid.Column="2" Text="{Binding TargetZ}" Height="26" FontSize="12"/>
+            <Button Grid.Column="3" Content="Go" Command="{Binding MoveZCommand}" Height="26" Margin="5,0"/>
+            <Button Grid.Column="4" Content="◀" Width="30" Height="26"
+                    PreviewMouseDown="JogZ_MinusDown" PreviewMouseUp="JogZ_Up"/>
+            <Button Grid.Column="5" Content="▶" Width="30" Height="26" Margin="3,0,0,0"
+                    PreviewMouseDown="JogZ_PlusDown" PreviewMouseUp="JogZ_Up"/>
+        </Grid>
+    </StackPanel>
+</Border>
         <Border Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Background="#2A2A3D" CornerRadius="10"
                 Padding="15" Margin="0,10">
             <StackPanel>
