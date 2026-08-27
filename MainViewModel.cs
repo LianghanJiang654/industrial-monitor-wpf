@@ -12,9 +12,19 @@ using SkiaSharp;
 using System.Collections.ObjectModel;
 using System.Windows.Media;
 using Microsoft.Data.Sqlite;
+using System.Text.Json;
+using System.IO;
 
 namespace FactorialApp
 {
+    public class Recipe
+    {
+        public string Name { get; set; }
+        public string TemperatureThreshold { get; set; }
+        public string TargetX { get; set; }
+        public string TargetY { get; set; }
+        public string TargetZ { get; set; }
+    }
     public class MainViewModel : INotifyPropertyChanged
     {
         private string _temperature = "--";
@@ -26,6 +36,12 @@ namespace FactorialApp
         private object _currentView;
         private IDeviceService deviceService;
 
+        public enum SystemState
+        {
+            Idle,
+            Running,
+            Alarm
+        }
         public object CurrentView
         {
             get { return _currentView; }
@@ -38,6 +54,16 @@ namespace FactorialApp
         private ObservableCollection<double> pressureHistory = new ObservableCollection<double>();
         public ICommand ShowMonitorCommand { get; }
         public ICommand ShowSettingsCommand { get; }
+        public ObservableCollection<Recipe> Recipes { get; set; } = new ObservableCollection<Recipe>();
+        public ICommand SaveRecipeCommand { get; }
+        public ICommand LoadRecipeCommand { get; }
+
+        private string _newRecipeName = "";
+        public string NewRecipeName
+        {
+            get { return _newRecipeName; }
+            set { _newRecipeName = value; OnPropertyChanged(nameof(NewRecipeName)); }
+        }
 
         public Brush TemperatureColor
         {
@@ -78,6 +104,20 @@ namespace FactorialApp
         private string _targetX = "0";
         private string _targetY = "0";
         private string _targetZ = "0";
+        private SystemState _currentState = SystemState.Idle;
+        public SystemState CurrentState
+        {
+            get { return _currentState; }
+            set { _currentState = value; OnPropertyChanged(nameof(CurrentState)); OnPropertyChanged(nameof(StateText)); }
+        }
+
+        public string StateText => CurrentState switch
+        {
+            SystemState.Idle => "IDLE",
+            SystemState.Running => "RUNNING",
+            SystemState.Alarm => "ALARM",
+            _ => "UNKNOWN"
+        };
 
         public string AxisXPosition
         {
@@ -144,12 +184,15 @@ namespace FactorialApp
 
         public MainViewModel()
         {
+            LoadRecipesFromFile();
             deviceService = new SimulatedDeviceService();
             InitializeDatabase();
             StartCommand = new RelayCommand(ExecuteStart);
             StopCommand = new RelayCommand(ExecuteStop);
             ToggleMotorCommand = new RelayCommand(ExecuteToggleMotor);
             AcknowledgeAlarmCommand = new RelayCommand<AlarmItem>(ExecuteAcknowledgeAlarm);
+            SaveRecipeCommand = new RelayCommand(ExecuteSaveRecipe);
+            LoadRecipeCommand = new RelayCommand<Recipe>(ExecuteLoadRecipe);
 
             MoveXCommand = new RelayCommand(() => ExecuteMoveAxis("X", TargetX));
             MoveYCommand = new RelayCommand(() => ExecuteMoveAxis("Y", TargetY));
@@ -259,9 +302,70 @@ namespace FactorialApp
         {
             ReadRegister($"JOG {axis} 0");
         }
+  
+        private void ExecuteSaveRecipe()
+        {
+            if (string.IsNullOrWhiteSpace(NewRecipeName))
+            {
+                AddLog("Recipe name cannot be empty");
+                return;
+            }
 
+            Recipe recipe = new Recipe
+            {
+                Name = NewRecipeName,
+                TemperatureThreshold = TemperatureThreshold,
+                TargetX = TargetX,
+                TargetY = TargetY,
+                TargetZ = TargetZ
+            };
+
+            Recipes.Add(recipe);
+            SaveRecipesToFile();
+            AddLog($"Recipe '{NewRecipeName}' saved");
+        }
+
+        private void ExecuteLoadRecipe(Recipe recipe)
+        {
+            if (recipe == null) return;
+
+            TemperatureThreshold = recipe.TemperatureThreshold;
+            TargetX = recipe.TargetX;
+            TargetY = recipe.TargetY;
+            TargetZ = recipe.TargetZ;
+            AddLog($"Recipe '{recipe.Name}' loaded");
+        }
+
+        private void SaveRecipesToFile()
+        {
+            string json = JsonSerializer.Serialize(Recipes);
+            File.WriteAllText("recipes.json", json);
+        }
+
+        private void LoadRecipesFromFile()
+        {
+            if (File.Exists("recipes.json"))
+            {
+                string json = File.ReadAllText("recipes.json");
+                var loaded = JsonSerializer.Deserialize<ObservableCollection<Recipe>>(json);
+                if (loaded != null)
+                {
+                    foreach (var r in loaded)
+                    {
+                        Recipes.Add(r);
+                    }
+                }
+            }
+        }
         private async void ExecuteStart()
         {
+            if (CurrentState == SystemState.Alarm)
+            {
+                AddLog("Cannot start: system is in Alarm state. Please acknowledge alarm first.");
+                return;
+            }
+
+            CurrentState = SystemState.Running;
             cts = new CancellationTokenSource();
             CancellationToken token = cts.Token;
 
@@ -309,6 +413,10 @@ namespace FactorialApp
         private void ExecuteStop()
         {
             cts?.Cancel();
+            if (CurrentState != SystemState.Alarm)
+            {
+                CurrentState = SystemState.Idle;
+            }
         }
 
         private void ExecuteToggleMotor()
@@ -321,6 +429,7 @@ namespace FactorialApp
 
         private void RaiseAlarm(string message)
         {
+            CurrentState = SystemState.Alarm;
             string timestamp = DateTime.Now.ToString("HH:mm:ss");
 
             using var connection = new SqliteConnection(dbPath);
@@ -374,6 +483,20 @@ namespace FactorialApp
             command.CommandText = "UPDATE Alarms SET IsAcknowledged = 1 WHERE Id = $id";
             command.Parameters.AddWithValue("$id", alarm.Id);
             command.ExecuteNonQuery();
+            bool hasUnacknowledgedAlarms = false;
+            foreach (var a in Alarms)
+            {
+                if (!a.IsAcknowledged)
+                {
+                    hasUnacknowledgedAlarms = true;
+                    break;
+                }
+            }
+
+            if (!hasUnacknowledgedAlarms && CurrentState == SystemState.Alarm)
+            {
+                CurrentState = SystemState.Idle;
+            }
         }
         private string ReadRegister(string command)
         {
