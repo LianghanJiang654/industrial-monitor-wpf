@@ -210,21 +210,6 @@
                                     Margin="2,6,2,2"/>
                         </StackPanel>
                     </GroupBox>
-
-                    <GroupBox Header="◉  VISION">
-                        <StackPanel Margin="8">
-                            <Button Content="Blob Analysis"
-                                    Style="{StaticResource PurpleButton}"/>
-                            <Button Content="Template Match"
-                                    Style="{StaticResource ButtonBase}"/>
-                            <Button Content="Line Detection"
-                                    Style="{StaticResource ButtonBase}"/>
-                            <Button Content="Circle Detection"
-                                    Style="{StaticResource ButtonBase}"/>
-                            <Button Content="9-Point Calibration"
-                                    Style="{StaticResource ButtonBase}"/>
-                        </StackPanel>
-                    </GroupBox>
                 </StackPanel>
             </ScrollViewer>
 
@@ -667,3 +652,4 @@
         </Border>
     </Grid>
 </Window>
+
