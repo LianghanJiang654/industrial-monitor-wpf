@@ -7,7 +7,14 @@ namespace FactorialApp
         public MainWindow()
         {
             InitializeComponent();
-            DataContext = new MainViewModel();
+
+            IVisionService visionService =
+                new TcpVisionService(
+                    "192.168.2.130",
+                    5001
+                );
+
+            DataContext = new MainViewModel(visionService);
         }
     }
 }

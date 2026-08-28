@@ -1,19 +1,130 @@
 ﻿<Window x:Class="FactorialApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Industrial Monitor" Height="1400" Width="500"
+        Title="Industrial Monitor"
+        Height="1400"
+        Width="500"
         Background="#1E1E2E">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="50"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
 
-        <StackPanel Orientation="Horizontal" Grid.Row="0" Background="#15151F">
-            <Button Content="Monitor" Command="{Binding ShowMonitorCommand}" Width="100" Margin="10"/>
-            <Button Content="Settings" Command="{Binding ShowSettingsCommand}" Width="100" Margin="10"/>
-        </StackPanel>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="50"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <ContentControl Content="{Binding CurrentView}" Grid.Row="1"/>
-    </Grid>
+            <StackPanel Orientation="Horizontal" Grid.Row="0" Background="#15151F">
+                <Button Content="Monitor" Command="{Binding ShowMonitorCommand}" Width="100" Margin="10"/>
+                <Button Content="Settings" Command="{Binding ShowSettingsCommand}" Width="100" Margin="10"/>
+                <Button Content="Vision Detect" Command="{Binding DetectVisionCommand}" Width="120" Margin="10"/>
+            </StackPanel>
+
+            <Border Grid.Row="1" Margin="10" Padding="12" CornerRadius="8" Background="#2A2A3D">
+                <StackPanel>
+                    <TextBlock Text="Vision Result" Foreground="White" FontSize="18"
+                               FontWeight="Bold" Margin="0,0,0,8"/>
+                    <TextBlock Text="{Binding VisionStatus}" Foreground="White" Margin="0,0,0,8"/>
+
+                    <ItemsControl ItemsSource="{Binding VisionMarks}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,4" Padding="8" Background="#35354A" CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock Foreground="White">
+                                            <Run Text="X: "/>
+                                            <Run Text="{Binding X, StringFormat={}{0:F2}}"/>
+                                            <Run Text="   Y: "/>
+                                            <Run Text="{Binding Y, StringFormat={}{0:F2}}"/>
+                                        </TextBlock>
+                                        <TextBlock Foreground="LightGreen">
+                                            <Run Text="Machine X: "/>
+                                            <Run Text="{Binding Machine_X, StringFormat={}{0:F2}}"/>
+                                            <Run Text=" mm"/>
+                                        </TextBlock>
+                                        <TextBlock Foreground="LightGreen">
+                                            <Run Text="Machine Y: "/>
+                                            <Run Text="{Binding Machine_Y, StringFormat={}{0:F2}}"/>
+                                            <Run Text=" mm"/>
+                                        </TextBlock>
+                                        <TextBlock Foreground="White">
+                                            <Run Text="Angle: "/>
+                                            <Run Text="{Binding Angle, StringFormat={}{0:F2}}"/>
+                                            <Run Text="°   Area: "/>
+                                            <Run Text="{Binding Area, StringFormat={}{0:F2}}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="2" Margin="10,0,10,10" Padding="12"
+                    Background="#252536" CornerRadius="8">
+                <StackPanel>
+                    <TextBlock Text="Simulated PLC / Auto Cycle" Foreground="White"
+                               FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                    <Button Content="Start PLC Cycle"
+                            Command="{Binding StartPlcCycleCommand}"
+                            Height="36" Margin="0,0,0,8"/>
+
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0"
+                                Content="AUTO START"
+                                Command="{Binding AutoStartCommand}"
+                                Height="38"
+                                Margin="0,0,4,0"/>
+
+                        <Button Grid.Column="1"
+                                Content="AUTO STOP"
+                                Command="{Binding AutoStopCommand}"
+                                Height="38"
+                                Margin="4,0,0,0"/>
+                    </Grid>
+
+                    <TextBlock Foreground="White" FontWeight="Bold" Margin="0,0,0,8">
+                        <Run Text="Auto Running: "/>
+                        <Run Text="{Binding IsAutoRunning}"/>
+                    </TextBlock>
+
+                    <UniformGrid Columns="2" Margin="0,0,0,10">
+                        <TextBlock Text="Cycle Count" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="{Binding CycleCount}" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="Pass Count" Foreground="LightGreen" Margin="0,3"/>
+                        <TextBlock Text="{Binding PassCount}" Foreground="LightGreen" Margin="0,3"/>
+                        <TextBlock Text="Fail Count" Foreground="Tomato" Margin="0,3"/>
+                        <TextBlock Text="{Binding FailCount}" Foreground="Tomato" Margin="0,3"/>
+                    </UniformGrid>
+
+                    <Separator Margin="0,2,0,8"/>
+
+                    <UniformGrid Columns="2">
+                        <TextBlock Text="Start" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="{Binding PlcStart}" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="Trigger" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="{Binding PlcTrigger}" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="Busy" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="{Binding PlcBusy}" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="Done" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="{Binding PlcDone}" Foreground="White" Margin="0,3"/>
+                        <TextBlock Text="Pass" Foreground="LightGreen" Margin="0,3"/>
+                        <TextBlock Text="{Binding PlcPass}" Foreground="LightGreen" Margin="0,3"/>
+                        <TextBlock Text="Fail" Foreground="Tomato" Margin="0,3"/>
+                        <TextBlock Text="{Binding PlcFail}" Foreground="Tomato" Margin="0,3"/>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <ContentControl Content="{Binding CurrentView}" Grid.Row="3"/>
+        </Grid>
+    </ScrollViewer>
 </Window>

@@ -35,7 +35,12 @@ namespace FactorialApp
         private string dbPath = "Data Source=monitor.db";
         private object _currentView;
         private IDeviceService deviceService;
-
+        private readonly IVisionService _visionService;
+        private readonly SimulatedPlcService _plcService = new SimulatedPlcService();
+        
+        private bool _plcStart;
+        
+        
         public enum SystemState
         {
             Idle,
@@ -96,6 +101,82 @@ namespace FactorialApp
             get { return _pressure; }
             set { _pressure = value; OnPropertyChanged(nameof(Pressure)); }
         }
+        
+        public bool PlcStart
+        {
+            get => _plcStart;
+            set { _plcStart = value; OnPropertyChanged(nameof(PlcStart)); }
+        }
+
+        private bool _plcTrigger;
+        public bool PlcTrigger
+        {
+            get => _plcTrigger;
+            set { _plcTrigger = value; OnPropertyChanged(nameof(PlcTrigger)); }
+        }
+
+        private bool _plcBusy;
+        public bool PlcBusy
+        {
+            get => _plcBusy;
+            set { _plcBusy = value; OnPropertyChanged(nameof(PlcBusy)); }
+        }
+
+        private bool _plcDone;
+        public bool PlcDone
+        {
+            get => _plcDone;
+            set { _plcDone = value; OnPropertyChanged(nameof(PlcDone)); }
+        }
+
+        private bool _plcPass;
+        public bool PlcPass
+        {
+            get => _plcPass;
+            set { _plcPass = value; OnPropertyChanged(nameof(PlcPass)); }
+        }
+
+        private bool _plcFail;
+        public bool PlcFail
+        {
+            get => _plcFail;
+            set { _plcFail = value; OnPropertyChanged(nameof(PlcFail)); }
+        }
+
+        public ICommand StartPlcCycleCommand { get; }
+
+        private CancellationTokenSource? _autoCycleCts;
+
+        private bool _isAutoRunning;
+        public bool IsAutoRunning
+        {
+            get => _isAutoRunning;
+            set { _isAutoRunning = value; OnPropertyChanged(nameof(IsAutoRunning)); }
+        }
+
+        private int _cycleCount;
+        public int CycleCount
+        {
+            get => _cycleCount;
+            set { _cycleCount = value; OnPropertyChanged(nameof(CycleCount)); }
+        }
+
+        private int _passCount;
+        public int PassCount
+        {
+            get => _passCount;
+            set { _passCount = value; OnPropertyChanged(nameof(PassCount)); }
+        }
+
+        private int _failCount;
+        public int FailCount
+        {
+            get => _failCount;
+            set { _failCount = value; OnPropertyChanged(nameof(FailCount)); }
+        }
+
+        public ICommand AutoStartCommand { get; }
+        public ICommand AutoStopCommand { get; }
 
         // ===== 多轴 XYZ =====
         private string _axisXPosition = "0";
@@ -162,6 +243,15 @@ namespace FactorialApp
         public ICommand JogStopCommand { get; }
 
         public ObservableCollection<string> LogEntries { get; set; } = new ObservableCollection<string>();
+        public ObservableCollection<VisionMark> VisionMarks { get; set; } = new ObservableCollection<VisionMark>();
+
+        private string _visionStatus = "Ready";
+        public string VisionStatus
+        {
+            get { return _visionStatus; }
+            set { _visionStatus = value; OnPropertyChanged(nameof(VisionStatus)); }
+        }
+
 
         public string MotorStatus
         {
@@ -180,10 +270,13 @@ namespace FactorialApp
         public ICommand StopCommand { get; }
         public ICommand ToggleMotorCommand { get; }
         public ICommand AcknowledgeAlarmCommand { get; }
+        public ICommand DetectVisionCommand { get; }
         public ObservableCollection<AlarmItem> Alarms { get; set; } = new ObservableCollection<AlarmItem>();
 
-        public MainViewModel()
+        public MainViewModel(IVisionService visionService)
         {
+            _visionService = visionService;
+
             LoadRecipesFromFile();
             deviceService = new SimulatedDeviceService();
             InitializeDatabase();
@@ -191,6 +284,12 @@ namespace FactorialApp
             StopCommand = new RelayCommand(ExecuteStop);
             ToggleMotorCommand = new RelayCommand(ExecuteToggleMotor);
             AcknowledgeAlarmCommand = new RelayCommand<AlarmItem>(ExecuteAcknowledgeAlarm);
+            DetectVisionCommand = new RelayCommand(async () => await ExecuteDetectVision());
+            _plcService.StateChanged += UpdatePlcState;
+            StartPlcCycleCommand = new RelayCommand(async () => await ExecutePlcCycle());
+            AutoStartCommand = new RelayCommand(async () => await ExecuteAutoCycle());
+            AutoStopCommand = new RelayCommand(ExecuteAutoStop);
+            UpdatePlcState();
             SaveRecipeCommand = new RelayCommand(ExecuteSaveRecipe);
             LoadRecipeCommand = new RelayCommand<Recipe>(ExecuteLoadRecipe);
 
@@ -357,6 +456,171 @@ namespace FactorialApp
                 }
             }
         }
+        
+        private void UpdatePlcState()
+        {
+            PlcStart = _plcService.Start;
+            PlcTrigger = _plcService.Trigger;
+            PlcBusy = _plcService.Busy;
+            PlcDone = _plcService.Done;
+            PlcPass = _plcService.Pass;
+            PlcFail = _plcService.Fail;
+        }
+
+        private async Task ExecutePlcCycle()
+        {
+            if (IsAutoRunning)
+            {
+                AddLog("Manual PLC cycle ignored: Auto mode is running");
+                return;
+            }
+
+            await RunOneVisionCycleAsync(CancellationToken.None);
+        }
+
+        private async Task<bool> RunOneVisionCycleAsync(CancellationToken cancellationToken)
+        {
+            AddLog("PLC cycle started");
+
+            _plcService.Reset();
+            UpdatePlcState();
+
+            await _plcService.StartCycleAsync(cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            AddLog("PLC Trigger received -> Vision Detect");
+            VisionStatus = "Detecting...";
+
+            VisionResult? result = await _visionService.DetectAsync();
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            bool visionOk =
+                result != null &&
+                result.Success &&
+                result.Marks.Count > 0;
+
+            _plcService.SetVisionResult(visionOk);
+
+            if (visionOk)
+            {
+                VisionMarks.Clear();
+
+                foreach (VisionMark mark in result!.Marks)
+                {
+                    VisionMarks.Add(mark);
+                }
+
+                VisionStatus = $"OK - {result.Count} mark(s)";
+                AddLog("Vision result = PASS");
+            }
+            else
+            {
+                VisionStatus = "Failed";
+                AddLog($"Vision result = FAIL: {result?.Message ?? "no result"}");
+            }
+
+            return visionOk;
+        }
+
+        private async Task ExecuteAutoCycle()
+        {
+            if (IsAutoRunning)
+            {
+                AddLog("Auto cycle is already running");
+                return;
+            }
+
+            _autoCycleCts = new CancellationTokenSource();
+            CancellationToken token = _autoCycleCts.Token;
+
+            CycleCount = 0;
+            PassCount = 0;
+            FailCount = 0;
+            IsAutoRunning = true;
+
+            AddLog("AUTO START");
+
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    bool passed = await RunOneVisionCycleAsync(token);
+
+                    CycleCount++;
+
+                    if (passed)
+                        PassCount++;
+                    else
+                        FailCount++;
+
+                    AddLog(
+                        $"Auto Cycle {CycleCount} finished - " +
+                        $"Pass={PassCount}, Fail={FailCount}"
+                    );
+
+                    await Task.Delay(1000, token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal when Auto Stop is pressed.
+            }
+            finally
+            {
+                IsAutoRunning = false;
+                _plcService.Reset();
+                UpdatePlcState();
+                AddLog("AUTO STOP");
+            }
+        }
+
+        private void ExecuteAutoStop()
+        {
+            _autoCycleCts?.Cancel();
+        }
+
+        private async Task ExecuteDetectVision()
+        {
+            VisionStatus = "Detecting...";
+            AddLog("Vision detection started");
+
+            VisionResult? result = await _visionService.DetectAsync();
+
+            if (result == null)
+            {
+                VisionStatus = "Failed";
+                AddLog("Vision detection failed: no result");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                VisionStatus = "Failed";
+                AddLog($"Vision detection failed: {result.Message}");
+                return;
+            }
+
+            VisionMarks.Clear();
+
+            foreach (VisionMark mark in result.Marks)
+            {
+                VisionMarks.Add(mark);
+            }
+
+            VisionStatus = $"OK - {VisionMarks.Count} mark(s)";
+            AddLog($"Vision OK - detected {VisionMarks.Count} mark(s)");
+
+            for (int i = 0; i < VisionMarks.Count; i++)
+            {
+                VisionMark mark = VisionMarks[i];
+                AddLog(
+                    $"Mark {i + 1}: X={mark.X:F2}, Y={mark.Y:F2}, Angle={mark.Angle:F2}, Area={mark.Area:F2}"
+                );
+            }
+        }
+
         private async void ExecuteStart()
         {
             if (CurrentState == SystemState.Alarm)
