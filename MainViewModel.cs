@@ -37,10 +37,128 @@ namespace FactorialApp
         private IDeviceService deviceService;
         private readonly IVisionService _visionService;
         private readonly SimulatedPlcService _plcService = new SimulatedPlcService();
-        
+
         private bool _plcStart;
+        public bool PlcStart
+        {
+            get => _plcStart;
+            set { _plcStart = value; OnPropertyChanged(nameof(PlcStart)); }
+        }
+
+        private bool _plcTrigger;
+        public bool PlcTrigger
+        {
+            get => _plcTrigger;
+            set { _plcTrigger = value; OnPropertyChanged(nameof(PlcTrigger)); }
+        }
+
+        private bool _plcBusy;
+        public bool PlcBusy
+        {
+            get => _plcBusy;
+            set { _plcBusy = value; OnPropertyChanged(nameof(PlcBusy)); }
+        }
+
+        private bool _plcDone;
+        public bool PlcDone
+        {
+            get => _plcDone;
+            set { _plcDone = value; OnPropertyChanged(nameof(PlcDone)); }
+        }
+
+        private bool _plcPass;
+        public bool PlcPass
+        {
+            get => _plcPass;
+            set { _plcPass = value; OnPropertyChanged(nameof(PlcPass)); }
+        }
+
+        private bool _plcFail;
+        public bool PlcFail
+        {
+            get => _plcFail;
+            set { _plcFail = value; OnPropertyChanged(nameof(PlcFail)); }
+        }
+
+        private CancellationTokenSource? _autoCycleCts;
+
+        private bool _isAutoRunning;
+        public bool IsAutoRunning
+        {
+            get => _isAutoRunning;
+            set { _isAutoRunning = value; OnPropertyChanged(nameof(IsAutoRunning)); }
+        }
+
+        private int _cycleCount;
+        public int CycleCount
+        {
+            get => _cycleCount;
+            set { _cycleCount = value; OnPropertyChanged(nameof(CycleCount)); }
+        }
+
+        private int _passCount;
+        public int PassCount
+        {
+            get => _passCount;
+            set { _passCount = value; OnPropertyChanged(nameof(PassCount)); }
+        }
+
+        private int _failCount;
+        public int FailCount
+        {
+            get => _failCount;
+            set { _failCount = value; OnPropertyChanged(nameof(FailCount)); }
+        }
+
+        private string _visionThreshold = "128";
+        private string _visionMinArea = "1000";
+        private string _visionMaxArea = "500000";
+
+        public string VisionThreshold
+        {
+            get => _visionThreshold;
+            set
+            {
+                _visionThreshold = value;
+                OnPropertyChanged(nameof(VisionThreshold));
+            }
+        }
+
+        public string VisionMinArea
+        {
+            get => _visionMinArea;
+            set
+            {
+                _visionMinArea = value;
+                OnPropertyChanged(nameof(VisionMinArea));
+            }
+        }
+
+        public string VisionMaxArea
+        {
+            get => _visionMaxArea;
+            set
+            {
+                _visionMaxArea = value;
+                OnPropertyChanged(nameof(VisionMaxArea));
+            }
+        }
+
+        public ObservableCollection<VisionMark> VisionMarks { get; set; } =
+            new ObservableCollection<VisionMark>();
+
+        private string _visionStatus = "Ready";
+        public string VisionStatus
+        {
+            get => _visionStatus;
+            set
+            {
+                _visionStatus = value;
+                OnPropertyChanged(nameof(VisionStatus));
+            }
+        }
         
-        
+
         public enum SystemState
         {
             Idle,
@@ -101,82 +219,6 @@ namespace FactorialApp
             get { return _pressure; }
             set { _pressure = value; OnPropertyChanged(nameof(Pressure)); }
         }
-        
-        public bool PlcStart
-        {
-            get => _plcStart;
-            set { _plcStart = value; OnPropertyChanged(nameof(PlcStart)); }
-        }
-
-        private bool _plcTrigger;
-        public bool PlcTrigger
-        {
-            get => _plcTrigger;
-            set { _plcTrigger = value; OnPropertyChanged(nameof(PlcTrigger)); }
-        }
-
-        private bool _plcBusy;
-        public bool PlcBusy
-        {
-            get => _plcBusy;
-            set { _plcBusy = value; OnPropertyChanged(nameof(PlcBusy)); }
-        }
-
-        private bool _plcDone;
-        public bool PlcDone
-        {
-            get => _plcDone;
-            set { _plcDone = value; OnPropertyChanged(nameof(PlcDone)); }
-        }
-
-        private bool _plcPass;
-        public bool PlcPass
-        {
-            get => _plcPass;
-            set { _plcPass = value; OnPropertyChanged(nameof(PlcPass)); }
-        }
-
-        private bool _plcFail;
-        public bool PlcFail
-        {
-            get => _plcFail;
-            set { _plcFail = value; OnPropertyChanged(nameof(PlcFail)); }
-        }
-
-        public ICommand StartPlcCycleCommand { get; }
-
-        private CancellationTokenSource? _autoCycleCts;
-
-        private bool _isAutoRunning;
-        public bool IsAutoRunning
-        {
-            get => _isAutoRunning;
-            set { _isAutoRunning = value; OnPropertyChanged(nameof(IsAutoRunning)); }
-        }
-
-        private int _cycleCount;
-        public int CycleCount
-        {
-            get => _cycleCount;
-            set { _cycleCount = value; OnPropertyChanged(nameof(CycleCount)); }
-        }
-
-        private int _passCount;
-        public int PassCount
-        {
-            get => _passCount;
-            set { _passCount = value; OnPropertyChanged(nameof(PassCount)); }
-        }
-
-        private int _failCount;
-        public int FailCount
-        {
-            get => _failCount;
-            set { _failCount = value; OnPropertyChanged(nameof(FailCount)); }
-        }
-
-        public ICommand AutoStartCommand { get; }
-        public ICommand AutoStopCommand { get; }
 
         // ===== 多轴 XYZ =====
         private string _axisXPosition = "0";
@@ -243,15 +285,6 @@ namespace FactorialApp
         public ICommand JogStopCommand { get; }
 
         public ObservableCollection<string> LogEntries { get; set; } = new ObservableCollection<string>();
-        public ObservableCollection<VisionMark> VisionMarks { get; set; } = new ObservableCollection<VisionMark>();
-
-        private string _visionStatus = "Ready";
-        public string VisionStatus
-        {
-            get { return _visionStatus; }
-            set { _visionStatus = value; OnPropertyChanged(nameof(VisionStatus)); }
-        }
-
 
         public string MotorStatus
         {
@@ -271,6 +304,9 @@ namespace FactorialApp
         public ICommand ToggleMotorCommand { get; }
         public ICommand AcknowledgeAlarmCommand { get; }
         public ICommand DetectVisionCommand { get; }
+        public ICommand StartPlcCycleCommand { get; }
+        public ICommand AutoStartCommand { get; }
+        public ICommand AutoStopCommand { get; }
         public ObservableCollection<AlarmItem> Alarms { get; set; } = new ObservableCollection<AlarmItem>();
 
         public MainViewModel(IVisionService visionService)
@@ -284,6 +320,7 @@ namespace FactorialApp
             StopCommand = new RelayCommand(ExecuteStop);
             ToggleMotorCommand = new RelayCommand(ExecuteToggleMotor);
             AcknowledgeAlarmCommand = new RelayCommand<AlarmItem>(ExecuteAcknowledgeAlarm);
+
             DetectVisionCommand = new RelayCommand(async () => await ExecuteDetectVision());
             _plcService.StateChanged += UpdatePlcState;
             StartPlcCycleCommand = new RelayCommand(async () => await ExecutePlcCycle());
@@ -456,7 +493,6 @@ namespace FactorialApp
                 }
             }
         }
-        
         private void UpdatePlcState()
         {
             PlcStart = _plcService.Start;
@@ -465,6 +501,101 @@ namespace FactorialApp
             PlcDone = _plcService.Done;
             PlcPass = _plcService.Pass;
             PlcFail = _plcService.Fail;
+        }
+
+        private async Task<VisionResult?> RunVisionDetectAsync()
+        {
+            if (!int.TryParse(VisionThreshold, out int threshold))
+            {
+                VisionStatus = "Invalid Threshold";
+                AddLog("Vision parameter error: Threshold is invalid");
+                return null;
+            }
+
+            if (!double.TryParse(VisionMinArea, out double minArea))
+            {
+                VisionStatus = "Invalid Min Area";
+                AddLog("Vision parameter error: Min Area is invalid");
+                return null;
+            }
+
+            if (!double.TryParse(VisionMaxArea, out double maxArea))
+            {
+                VisionStatus = "Invalid Max Area";
+                AddLog("Vision parameter error: Max Area is invalid");
+                return null;
+            }
+
+            if (threshold < 0 || threshold > 255)
+            {
+                VisionStatus = "Threshold must be 0-255";
+                AddLog("Vision parameter error: Threshold must be 0-255");
+                return null;
+            }
+
+            if (minArea < 0)
+            {
+                VisionStatus = "Min Area must be >= 0";
+                AddLog("Vision parameter error: Min Area must be >= 0");
+                return null;
+            }
+
+            if (maxArea <= minArea)
+            {
+                VisionStatus = "Max Area must be > Min Area";
+                AddLog("Vision parameter error: Max Area must be greater than Min Area");
+                return null;
+            }
+
+            AddLog($"Vision Params -> Threshold={threshold}, MinArea={minArea}, MaxArea={maxArea}");
+
+            return await _visionService.DetectAsync(
+                threshold,
+                minArea,
+                maxArea
+            );
+        }
+
+        private async Task ExecuteDetectVision()
+        {
+            VisionStatus = "Detecting...";
+            AddLog("Vision detection started");
+
+            VisionResult? result = await RunVisionDetectAsync();
+
+            if (result == null)
+            {
+                if (VisionStatus == "Detecting...")
+                    VisionStatus = "Failed";
+
+                AddLog("Vision detection failed: no result");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                VisionStatus = "Failed";
+                AddLog($"Vision detection failed: {result.Message}");
+                return;
+            }
+
+            VisionMarks.Clear();
+
+            foreach (VisionMark mark in result.Marks)
+            {
+                VisionMarks.Add(mark);
+            }
+
+            VisionStatus = $"OK - {VisionMarks.Count} mark(s)";
+            AddLog($"Vision OK - detected {VisionMarks.Count} mark(s)");
+
+            for (int i = 0; i < VisionMarks.Count; i++)
+            {
+                VisionMark mark = VisionMarks[i];
+                AddLog(
+                    $"Mark {i + 1}: X={mark.X:F2}, Y={mark.Y:F2}, Angle={mark.Angle:F2}, Area={mark.Area:F2}"
+                );
+            }
         }
 
         private async Task ExecutePlcCycle()
@@ -486,14 +617,12 @@ namespace FactorialApp
             UpdatePlcState();
 
             await _plcService.StartCycleAsync(cancellationToken);
-
             cancellationToken.ThrowIfCancellationRequested();
 
             AddLog("PLC Trigger received -> Vision Detect");
             VisionStatus = "Detecting...";
 
-            VisionResult? result = await _visionService.DetectAsync();
-
+            VisionResult? result = await RunVisionDetectAsync();
             cancellationToken.ThrowIfCancellationRequested();
 
             bool visionOk =
@@ -565,60 +694,25 @@ namespace FactorialApp
             }
             catch (OperationCanceledException)
             {
-                // Normal when Auto Stop is pressed.
+                AddLog("AUTO STOP");
             }
             finally
             {
                 IsAutoRunning = false;
                 _plcService.Reset();
                 UpdatePlcState();
-                AddLog("AUTO STOP");
             }
         }
 
         private void ExecuteAutoStop()
         {
+            if (!IsAutoRunning)
+            {
+                AddLog("Auto cycle is not running");
+                return;
+            }
+
             _autoCycleCts?.Cancel();
-        }
-
-        private async Task ExecuteDetectVision()
-        {
-            VisionStatus = "Detecting...";
-            AddLog("Vision detection started");
-
-            VisionResult? result = await _visionService.DetectAsync();
-
-            if (result == null)
-            {
-                VisionStatus = "Failed";
-                AddLog("Vision detection failed: no result");
-                return;
-            }
-
-            if (!result.Success)
-            {
-                VisionStatus = "Failed";
-                AddLog($"Vision detection failed: {result.Message}");
-                return;
-            }
-
-            VisionMarks.Clear();
-
-            foreach (VisionMark mark in result.Marks)
-            {
-                VisionMarks.Add(mark);
-            }
-
-            VisionStatus = $"OK - {VisionMarks.Count} mark(s)";
-            AddLog($"Vision OK - detected {VisionMarks.Count} mark(s)");
-
-            for (int i = 0; i < VisionMarks.Count; i++)
-            {
-                VisionMark mark = VisionMarks[i];
-                AddLog(
-                    $"Mark {i + 1}: X={mark.X:F2}, Y={mark.Y:F2}, Angle={mark.Angle:F2}, Area={mark.Area:F2}"
-                );
-            }
         }
 
         private async void ExecuteStart()
