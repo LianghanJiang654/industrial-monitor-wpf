@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -17,37 +18,70 @@ namespace FactorialApp
             _port = port;
         }
 
-        public async Task<VisionResult?> DetectAsync()
+        public async Task<VisionResult?> DetectAsync(
+            string imageName,
+            string thresholdMode,
+            int threshold,
+            double minArea,
+            double maxArea,
+            double positionTolerance,
+            double angleTolerance,
+            double areaTolerancePercent)
         {
             try
             {
                 using TcpClient client = new TcpClient();
-
                 await client.ConnectAsync(_ip, _port);
 
                 using NetworkStream stream = client.GetStream();
 
-                byte[] request = Encoding.UTF8.GetBytes("detect");
-                await stream.WriteAsync(request, 0, request.Length);
+                var requestObject = new
+                {
+                    command = "detect",
+                    image_name = imageName,
+                    threshold_mode = thresholdMode,
+                    threshold = threshold,
+                    min_area = minArea,
+                    max_area = maxArea,
+                    position_tolerance = positionTolerance,
+                    angle_tolerance = angleTolerance,
+                    area_tolerance_percent = areaTolerancePercent
+                };
 
-                byte[] buffer = new byte[4096];
-                int length = await stream.ReadAsync(buffer, 0, buffer.Length);
+                byte[] requestBytes =
+                    Encoding.UTF8.GetBytes(JsonSerializer.Serialize(requestObject));
 
-                string json = Encoding.UTF8.GetString(buffer, 0, length);
+                await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
+
+                using MemoryStream responseBuffer = new MemoryStream();
+                byte[] buffer = new byte[8192];
+
+                while (true)
+                {
+                    int read = await stream.ReadAsync(buffer, 0, buffer.Length);
+
+                    if (read == 0)
+                        break;
+
+                    responseBuffer.Write(buffer, 0, read);
+                }
+
+                string responseJson =
+                    Encoding.UTF8.GetString(responseBuffer.ToArray());
 
                 return JsonSerializer.Deserialize<VisionResult>(
-                    json,
+                    responseJson,
                     new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true
-                    }
-                );
+                    });
             }
             catch (Exception ex)
             {
                 return new VisionResult
                 {
                     Success = false,
+                    InspectionPass = false,
                     Message = ex.Message
                 };
             }

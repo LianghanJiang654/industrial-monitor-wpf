@@ -11,6 +11,7 @@ using LiveChartsCore.SkiaSharpView.Painting;
 using SkiaSharp;
 using System.Collections.ObjectModel;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.Data.Sqlite;
 using System.Text.Json;
 using System.IO;
@@ -19,11 +20,20 @@ namespace FactorialApp
 {
     public class Recipe
     {
-        public string Name { get; set; }
-        public string TemperatureThreshold { get; set; }
-        public string TargetX { get; set; }
-        public string TargetY { get; set; }
-        public string TargetZ { get; set; }
+        public string Name { get; set; } = "";
+        public string TemperatureThreshold { get; set; } = "26";
+        public string TargetX { get; set; } = "0";
+        public string TargetY { get; set; } = "0";
+        public string TargetZ { get; set; } = "0";
+        public string VisionImageName { get; set; } = "normal";
+        public string VisionThresholdMode { get; set; } = "fixed";
+        public string VisionThreshold { get; set; } = "128";
+        public string VisionMinArea { get; set; } = "1000";
+        public string VisionMaxArea { get; set; } = "500000";
+        public string VisionPositionTolerance { get; set; } = "5";
+        public string VisionAngleTolerance { get; set; } = "3";
+        public string VisionAreaTolerancePercent { get; set; } = "10";
+        public string ProductCode { get; set; } = "PRODUCT-A";
     }
     public class MainViewModel : INotifyPropertyChanged
     {
@@ -37,6 +47,128 @@ namespace FactorialApp
         private IDeviceService deviceService;
         private readonly IVisionService _visionService;
         private readonly SimulatedPlcService _plcService = new SimulatedPlcService();
+        private readonly ICameraService _cameraService = new SimulatedCameraService();
+
+
+
+        private string _productCode = "PRODUCT-A";
+        public string ProductCode
+        {
+            get => _productCode;
+            set { _productCode = value; OnPropertyChanged(nameof(ProductCode)); }
+        }
+
+        private string _activeRecipeName = "DEFAULT";
+        public string ActiveRecipeName
+        {
+            get => _activeRecipeName;
+            set { _activeRecipeName = value; OnPropertyChanged(nameof(ActiveRecipeName)); }
+        }
+
+        private ImageSource? _visionImage;
+        public ImageSource? VisionImage
+        {
+            get => _visionImage;
+            set { _visionImage = value; OnPropertyChanged(nameof(VisionImage)); }
+        }
+
+        private bool _plcReady = true;
+        public bool PlcReady
+        {
+            get => _plcReady;
+            set { _plcReady = value; OnPropertyChanged(nameof(PlcReady)); }
+        }
+
+        private string _handshakeState = "READY";
+        public string HandshakeState
+        {
+            get => _handshakeState;
+            set { _handshakeState = value; OnPropertyChanged(nameof(HandshakeState)); }
+        }
+
+        private string _lastAlarmCode = "-";
+        public string LastAlarmCode
+        {
+            get => _lastAlarmCode;
+            set { _lastAlarmCode = value; OnPropertyChanged(nameof(LastAlarmCode)); }
+        }
+
+        private bool _cameraConnected;
+        public bool CameraConnected
+        {
+            get => _cameraConnected;
+            set { _cameraConnected = value; OnPropertyChanged(nameof(CameraConnected)); OnPropertyChanged(nameof(CameraStatusText)); }
+        }
+
+        private bool _cameraLive;
+        public bool CameraLive
+        {
+            get => _cameraLive;
+            set { _cameraLive = value; OnPropertyChanged(nameof(CameraLive)); OnPropertyChanged(nameof(CameraStatusText)); }
+        }
+
+        private double _cameraExposureUs = 5000;
+        public double CameraExposureUs
+        {
+            get => _cameraExposureUs;
+            set
+            {
+                _cameraExposureUs = value;
+                _cameraService.ExposureUs = value;
+                OnPropertyChanged(nameof(CameraExposureUs));
+            }
+        }
+
+        private double _cameraGain = 1;
+        public double CameraGain
+        {
+            get => _cameraGain;
+            set
+            {
+                _cameraGain = value;
+                _cameraService.Gain = value;
+                OnPropertyChanged(nameof(CameraGain));
+            }
+        }
+
+        private string _cameraFaultMode = "none";
+        public string CameraFaultMode
+        {
+            get => _cameraFaultMode;
+            set
+            {
+                _cameraFaultMode = value;
+                _cameraService.FaultMode = value;
+                OnPropertyChanged(nameof(CameraFaultMode));
+            }
+        }
+
+        public string[] CameraFaultModes { get; } =
+        {
+            "none",
+            "offline",
+            "timeout",
+            "no_image"
+        };
+
+        public string CameraStatusText =>
+            CameraConnected
+                ? (CameraLive ? "CONNECTED / LIVE" : "CONNECTED")
+                : "DISCONNECTED";
+
+        private string _systemAlarmText = "-";
+        public string SystemAlarmText
+        {
+            get => _systemAlarmText;
+            set { _systemAlarmText = value; OnPropertyChanged(nameof(SystemAlarmText)); }
+        }
+
+        private bool _hasVisionAlarm;
+        public bool HasVisionAlarm
+        {
+            get => _hasVisionAlarm;
+            set { _hasVisionAlarm = value; OnPropertyChanged(nameof(HasVisionAlarm)); }
+        }
 
         private bool _plcStart;
         public bool PlcStart
@@ -93,23 +225,65 @@ namespace FactorialApp
         public int CycleCount
         {
             get => _cycleCount;
-            set { _cycleCount = value; OnPropertyChanged(nameof(CycleCount)); }
+            set { _cycleCount = value; OnPropertyChanged(nameof(CycleCount)); OnPropertyChanged(nameof(YieldPercent)); }
         }
 
         private int _passCount;
         public int PassCount
         {
             get => _passCount;
-            set { _passCount = value; OnPropertyChanged(nameof(PassCount)); }
+            set { _passCount = value; OnPropertyChanged(nameof(PassCount)); OnPropertyChanged(nameof(YieldPercent)); }
         }
 
         private int _failCount;
         public int FailCount
         {
             get => _failCount;
-            set { _failCount = value; OnPropertyChanged(nameof(FailCount)); }
+            set { _failCount = value; OnPropertyChanged(nameof(FailCount)); OnPropertyChanged(nameof(YieldPercent)); }
         }
 
+        private string _visionImageName = "multi_marks";
+
+        public string VisionImageName
+        {
+            get => _visionImageName;
+            set
+            {
+                _visionImageName = value;
+                OnPropertyChanged(nameof(VisionImageName));
+            }
+        }
+
+        public string[] VisionImageNames { get; } =
+        {
+            "multi_marks",
+            "normal",
+            "dark",
+            "bright",
+            "uneven",
+            "position_ng",
+            "angle_ng"
+        };
+        
+        private string _visionThresholdMode = "fixed";
+
+        public string VisionThresholdMode
+        {
+            get => _visionThresholdMode;
+            set
+            {
+                _visionThresholdMode = value;
+                OnPropertyChanged(nameof(VisionThresholdMode));
+            }
+        }
+
+        public string[] VisionThresholdModes { get; } =
+        {
+            "fixed",
+            "otsu",
+            "adaptive"
+        };
+        
         private string _visionThreshold = "128";
         private string _visionMinArea = "1000";
         private string _visionMaxArea = "500000";
@@ -143,6 +317,20 @@ namespace FactorialApp
                 OnPropertyChanged(nameof(VisionMaxArea));
             }
         }
+
+        private string _visionPositionTolerance = "5";
+        public string VisionPositionTolerance { get => _visionPositionTolerance; set { _visionPositionTolerance = value; OnPropertyChanged(nameof(VisionPositionTolerance)); } }
+
+        private string _visionAngleTolerance = "3";
+        public string VisionAngleTolerance { get => _visionAngleTolerance; set { _visionAngleTolerance = value; OnPropertyChanged(nameof(VisionAngleTolerance)); } }
+
+        private string _visionAreaTolerancePercent = "10";
+        public string VisionAreaTolerancePercent { get => _visionAreaTolerancePercent; set { _visionAreaTolerancePercent = value; OnPropertyChanged(nameof(VisionAreaTolerancePercent)); } }
+
+        private string _lastNgReason = "-";
+        public string LastNgReason { get => _lastNgReason; set { _lastNgReason = value; OnPropertyChanged(nameof(LastNgReason)); } }
+
+        public double YieldPercent => CycleCount == 0 ? 0.0 : (double)PassCount / CycleCount * 100.0;
 
         public ObservableCollection<VisionMark> VisionMarks { get; set; } =
             new ObservableCollection<VisionMark>();
@@ -303,6 +491,11 @@ namespace FactorialApp
         public ICommand StopCommand { get; }
         public ICommand ToggleMotorCommand { get; }
         public ICommand AcknowledgeAlarmCommand { get; }
+        public ICommand CameraConnectCommand { get; }
+        public ICommand CameraDisconnectCommand { get; }
+        public ICommand CameraLiveCommand { get; }
+        public ICommand CameraStopLiveCommand { get; }
+        public ICommand ResetVisionAlarmCommand { get; }
         public ICommand DetectVisionCommand { get; }
         public ICommand StartPlcCycleCommand { get; }
         public ICommand AutoStartCommand { get; }
@@ -321,12 +514,19 @@ namespace FactorialApp
             ToggleMotorCommand = new RelayCommand(ExecuteToggleMotor);
             AcknowledgeAlarmCommand = new RelayCommand<AlarmItem>(ExecuteAcknowledgeAlarm);
 
+            _cameraService.StateChanged += UpdateCameraState;
+            CameraConnectCommand = new RelayCommand(async () => await ExecuteCameraConnect());
+            CameraDisconnectCommand = new RelayCommand(async () => await ExecuteCameraDisconnect());
+            CameraLiveCommand = new RelayCommand(async () => await ExecuteCameraLive());
+            CameraStopLiveCommand = new RelayCommand(async () => await ExecuteCameraStopLive());
+            ResetVisionAlarmCommand = new RelayCommand(ExecuteResetVisionAlarm);
             DetectVisionCommand = new RelayCommand(async () => await ExecuteDetectVision());
             _plcService.StateChanged += UpdatePlcState;
             StartPlcCycleCommand = new RelayCommand(async () => await ExecutePlcCycle());
             AutoStartCommand = new RelayCommand(async () => await ExecuteAutoCycle());
             AutoStopCommand = new RelayCommand(ExecuteAutoStop);
             UpdatePlcState();
+            UpdateCameraState();
             SaveRecipeCommand = new RelayCommand(ExecuteSaveRecipe);
             LoadRecipeCommand = new RelayCommand<Recipe>(ExecuteLoadRecipe);
 
@@ -453,11 +653,21 @@ namespace FactorialApp
                 TemperatureThreshold = TemperatureThreshold,
                 TargetX = TargetX,
                 TargetY = TargetY,
-                TargetZ = TargetZ
+                TargetZ = TargetZ,
+                VisionImageName = VisionImageName,
+                VisionThresholdMode = VisionThresholdMode,
+                VisionThreshold = VisionThreshold,
+                VisionMinArea = VisionMinArea,
+                VisionMaxArea = VisionMaxArea,
+                VisionPositionTolerance = VisionPositionTolerance,
+                VisionAngleTolerance = VisionAngleTolerance,
+                VisionAreaTolerancePercent = VisionAreaTolerancePercent,
+                ProductCode = ProductCode
             };
 
             Recipes.Add(recipe);
             SaveRecipesToFile();
+            ActiveRecipeName = recipe.Name;
             AddLog($"Recipe '{NewRecipeName}' saved");
         }
 
@@ -469,6 +679,14 @@ namespace FactorialApp
             TargetX = recipe.TargetX;
             TargetY = recipe.TargetY;
             TargetZ = recipe.TargetZ;
+            VisionImageName = recipe.VisionImageName;
+            VisionThresholdMode = recipe.VisionThresholdMode;
+            VisionThreshold = recipe.VisionThreshold;
+            VisionMinArea = recipe.VisionMinArea;
+            VisionMaxArea = recipe.VisionMaxArea;
+            VisionPositionTolerance = recipe.VisionPositionTolerance;
+            VisionAngleTolerance = recipe.VisionAngleTolerance;
+            VisionAreaTolerancePercent = recipe.VisionAreaTolerancePercent;
             AddLog($"Recipe '{recipe.Name}' loaded");
         }
 
@@ -493,6 +711,191 @@ namespace FactorialApp
                 }
             }
         }
+        private void UpdateVisionImage(VisionResult? result)
+        {
+            if (result == null || string.IsNullOrWhiteSpace(result.AnnotatedImageBase64))
+                return;
+
+            try
+            {
+                byte[] bytes = Convert.FromBase64String(result.AnnotatedImageBase64);
+
+                using MemoryStream stream = new MemoryStream(bytes);
+
+                BitmapImage bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = stream;
+                bitmap.EndInit();
+                bitmap.Freeze();
+
+                VisionImage = bitmap;
+            }
+            catch (Exception ex)
+            {
+                AddLog($"Image display error: {ex.Message}");
+            }
+        }
+
+        private void UpdateCameraState()
+        {
+            CameraConnected = _cameraService.IsConnected;
+            CameraLive = _cameraService.IsLive;
+        }
+
+        private string GetAlarmCode(string message)
+        {
+            string upper = (message ?? "").ToUpperInvariant();
+
+            if (upper.Contains("OFFLINE") || upper.Contains("NOT CONNECTED"))
+                return "E001";
+
+            if (upper.Contains("TIMEOUT"))
+                return "E002";
+
+            if (upper.Contains("NO IMAGE"))
+                return "E003";
+
+            if (upper.Contains("COUNT NG"))
+                return "V101";
+
+            if (upper.Contains("POSITION NG"))
+                return "V102";
+
+            if (upper.Contains("ANGLE NG"))
+                return "V103";
+
+            if (upper.Contains("AREA NG"))
+                return "V104";
+
+            return "E999";
+        }
+
+        private void SetVisionAlarm(string message)
+        {
+            string code = GetAlarmCode(message);
+            HasVisionAlarm = true;
+            LastAlarmCode = code;
+            SystemAlarmText = $"{code}  {message}";
+            AddLog($"ALARM {code}: {message}");
+        }
+
+        private void ClearVisionAlarm()
+        {
+            HasVisionAlarm = false;
+            LastAlarmCode = "-";
+            SystemAlarmText = "-";
+        }
+
+        private async Task ExecuteCameraConnect()
+        {
+            try
+            {
+                _cameraService.FaultMode = CameraFaultMode;
+                await _cameraService.ConnectAsync();
+                UpdateCameraState();
+                ClearVisionAlarm();
+                AddLog("Camera connected");
+            }
+            catch (Exception ex)
+            {
+                UpdateCameraState();
+                SetVisionAlarm(ex.Message);
+            }
+        }
+
+        private async Task ExecuteCameraDisconnect()
+        {
+            try
+            {
+                await _cameraService.DisconnectAsync();
+                UpdateCameraState();
+                AddLog("Camera disconnected");
+            }
+            catch (Exception ex)
+            {
+                SetVisionAlarm(ex.Message);
+            }
+        }
+
+        private async Task ExecuteCameraLive()
+        {
+            try
+            {
+                _cameraService.FaultMode = CameraFaultMode;
+                await _cameraService.StartLiveAsync();
+                UpdateCameraState();
+                ClearVisionAlarm();
+                AddLog("Camera live view started");
+            }
+            catch (Exception ex)
+            {
+                UpdateCameraState();
+                SetVisionAlarm(ex.Message);
+            }
+        }
+
+        private async Task ExecuteCameraStopLive()
+        {
+            try
+            {
+                await _cameraService.StopLiveAsync();
+                UpdateCameraState();
+                AddLog("Camera live view stopped");
+            }
+            catch (Exception ex)
+            {
+                SetVisionAlarm(ex.Message);
+            }
+        }
+
+        private void ExecuteResetVisionAlarm()
+        {
+            ClearVisionAlarm();
+            LastNgReason = "-";
+            AddLog("Vision alarm reset");
+        }
+
+        private async Task<bool> PrepareCameraTriggerAsync(CancellationToken cancellationToken)
+        {
+            if (!CameraConnected)
+            {
+                SetVisionAlarm("CAMERA NOT CONNECTED");
+                VisionStatus = "CAMERA NOT CONNECTED";
+                return false;
+            }
+
+            try
+            {
+                _cameraService.FaultMode = CameraFaultMode;
+
+                using CancellationTokenSource timeoutCts =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
+
+                try
+                {
+                    await _cameraService.TriggerAsync(timeoutCts.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    SetVisionAlarm("VISION TIMEOUT - Camera trigger exceeded 2s");
+                    VisionStatus = "VISION TIMEOUT";
+                    return false;
+                }
+
+                ClearVisionAlarm();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                SetVisionAlarm(ex.Message);
+                VisionStatus = ex.Message;
+                return false;
+            }
+        }
+
         private void UpdatePlcState()
         {
             PlcStart = _plcService.Start;
@@ -505,95 +908,73 @@ namespace FactorialApp
 
         private async Task<VisionResult?> RunVisionDetectAsync()
         {
-            if (!int.TryParse(VisionThreshold, out int threshold))
-            {
-                VisionStatus = "Invalid Threshold";
-                AddLog("Vision parameter error: Threshold is invalid");
-                return null;
-            }
-
-            if (!double.TryParse(VisionMinArea, out double minArea))
-            {
-                VisionStatus = "Invalid Min Area";
-                AddLog("Vision parameter error: Min Area is invalid");
-                return null;
-            }
-
-            if (!double.TryParse(VisionMaxArea, out double maxArea))
-            {
-                VisionStatus = "Invalid Max Area";
-                AddLog("Vision parameter error: Max Area is invalid");
-                return null;
-            }
-
-            if (threshold < 0 || threshold > 255)
-            {
-                VisionStatus = "Threshold must be 0-255";
-                AddLog("Vision parameter error: Threshold must be 0-255");
-                return null;
-            }
-
-            if (minArea < 0)
-            {
-                VisionStatus = "Min Area must be >= 0";
-                AddLog("Vision parameter error: Min Area must be >= 0");
-                return null;
-            }
-
-            if (maxArea <= minArea)
-            {
-                VisionStatus = "Max Area must be > Min Area";
-                AddLog("Vision parameter error: Max Area must be greater than Min Area");
-                return null;
-            }
-
-            AddLog($"Vision Params -> Threshold={threshold}, MinArea={minArea}, MaxArea={maxArea}");
-
-            return await _visionService.DetectAsync(
-                threshold,
-                minArea,
-                maxArea
-            );
+            if (!int.TryParse(VisionThreshold, out int threshold) || threshold < 0 || threshold > 255) { VisionStatus = "Invalid Threshold"; AddLog("Vision parameter error: Threshold must be 0-255"); return null; }
+            if (!double.TryParse(VisionMinArea, out double minArea) || minArea < 0) { VisionStatus = "Invalid Min Area"; AddLog("Vision parameter error: Min Area is invalid"); return null; }
+            if (!double.TryParse(VisionMaxArea, out double maxArea) || maxArea <= minArea) { VisionStatus = "Invalid Max Area"; AddLog("Vision parameter error: Max Area must be > Min Area"); return null; }
+            if (!double.TryParse(VisionPositionTolerance, out double posTol) || posTol < 0) { VisionStatus = "Invalid Position Tol"; AddLog("Vision parameter error: Position Tolerance is invalid"); return null; }
+            if (!double.TryParse(VisionAngleTolerance, out double angleTol) || angleTol < 0) { VisionStatus = "Invalid Angle Tol"; AddLog("Vision parameter error: Angle Tolerance is invalid"); return null; }
+            if (!double.TryParse(VisionAreaTolerancePercent, out double areaTol) || areaTol < 0) { VisionStatus = "Invalid Area Tol"; AddLog("Vision parameter error: Area Tolerance is invalid"); return null; }
+            AddLog($"Vision Params -> Image={VisionImageName}, Mode={VisionThresholdMode}, Threshold={threshold}, MinArea={minArea}, MaxArea={maxArea}, PosTol={posTol}px, AngleTol={angleTol}deg, AreaTol={areaTol}%");
+            return await _visionService.DetectAsync(VisionImageName, VisionThresholdMode, threshold, minArea, maxArea, posTol, angleTol, areaTol);
         }
 
         private async Task ExecuteDetectVision()
         {
+            VisionStatus = "Triggering camera...";
+            AddLog("Manual vision trigger started");
+
+            bool cameraReady = await PrepareCameraTriggerAsync(CancellationToken.None);
+            if (!cameraReady)
+                return;
+
             VisionStatus = "Detecting...";
             AddLog("Vision detection started");
 
             VisionResult? result = await RunVisionDetectAsync();
-
-            if (result == null)
-            {
-                if (VisionStatus == "Detecting...")
-                    VisionStatus = "Failed";
-
-                AddLog("Vision detection failed: no result");
-                return;
-            }
-
-            if (!result.Success)
-            {
-                VisionStatus = "Failed";
-                AddLog($"Vision detection failed: {result.Message}");
-                return;
-            }
+            UpdateVisionImage(result);
 
             VisionMarks.Clear();
 
-            foreach (VisionMark mark in result.Marks)
+            if (result == null)
             {
-                VisionMarks.Add(mark);
+                VisionStatus = "VISION ERROR";
+                LastNgReason = "No result";
+                SetVisionAlarm("VISION ERROR - No result");
+                return;
             }
 
-            VisionStatus = $"OK - {VisionMarks.Count} mark(s)";
-            AddLog($"Vision OK - detected {VisionMarks.Count} mark(s)");
+            foreach (VisionMark mark in result.Marks)
+                VisionMarks.Add(mark);
+
+            if (!result.Success)
+            {
+                VisionStatus = "VISION ERROR";
+                LastNgReason = result.Message ?? "Vision service error";
+                SetVisionAlarm(LastNgReason);
+                return;
+            }
+
+            if (result.InspectionPass)
+            {
+                VisionStatus = $"PASS - {result.Count} mark(s)";
+                LastNgReason = "-";
+                ClearVisionAlarm();
+                AddLog($"Vision result = PASS ({result.Count} mark(s))");
+            }
+            else
+            {
+                VisionStatus = result.Message ?? "NG";
+                LastNgReason = result.Message ?? "Unknown NG";
+                LastAlarmCode = GetAlarmCode(LastNgReason);
+                AddLog($"Vision result = FAIL [{LastAlarmCode}]: {LastNgReason}");
+            }
 
             for (int i = 0; i < VisionMarks.Count; i++)
             {
                 VisionMark mark = VisionMarks[i];
                 AddLog(
-                    $"Mark {i + 1}: X={mark.X:F2}, Y={mark.Y:F2}, Angle={mark.Angle:F2}, Area={mark.Area:F2}"
+                    $"Mark {i + 1}: X={mark.X:F2}, Y={mark.Y:F2}, " +
+                    $"Angle={mark.Angle:F2}, Area={mark.Area:F2}"
                 );
             }
         }
@@ -612,6 +993,8 @@ namespace FactorialApp
         private async Task<bool> RunOneVisionCycleAsync(CancellationToken cancellationToken)
         {
             AddLog("PLC cycle started");
+            PlcReady = false;
+            HandshakeState = "START";
 
             _plcService.Reset();
             UpdatePlcState();
@@ -619,35 +1002,68 @@ namespace FactorialApp
             await _plcService.StartCycleAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            AddLog("PLC Trigger received -> Vision Detect");
+            AddLog("PLC Trigger received -> Camera Trigger");
+            HandshakeState = "TRIGGER";
+
+            VisionStatus = "Triggering camera...";
+            bool cameraReady = await PrepareCameraTriggerAsync(cancellationToken);
+
+            if (!cameraReady)
+            {
+                _plcService.SetVisionResult(false);
+                HandshakeState = "DONE / FAIL";
+                PlcReady = true;
+                LastNgReason = VisionStatus;
+                return false;
+            }
+
+            AddLog("Camera image ready -> Vision Detect");
+            HandshakeState = "BUSY";
             VisionStatus = "Detecting...";
 
             VisionResult? result = await RunVisionDetectAsync();
+            UpdateVisionImage(result);
             cancellationToken.ThrowIfCancellationRequested();
 
             bool visionOk =
                 result != null &&
                 result.Success &&
-                result.Marks.Count > 0;
+                result.InspectionPass;
 
             _plcService.SetVisionResult(visionOk);
+            HandshakeState = visionOk ? "DONE / PASS" : "DONE / FAIL";
+            PlcReady = true;
+
+            VisionMarks.Clear();
+
+            if (result != null)
+            {
+                foreach (VisionMark mark in result.Marks)
+                    VisionMarks.Add(mark);
+            }
 
             if (visionOk)
             {
-                VisionMarks.Clear();
-
-                foreach (VisionMark mark in result!.Marks)
-                {
-                    VisionMarks.Add(mark);
-                }
-
-                VisionStatus = $"OK - {result.Count} mark(s)";
+                VisionStatus = $"PASS - {result!.Count} mark(s)";
+                LastNgReason = "-";
+                ClearVisionAlarm();
                 AddLog("Vision result = PASS");
             }
             else
             {
-                VisionStatus = "Failed";
-                AddLog($"Vision result = FAIL: {result?.Message ?? "no result"}");
+                string reason = result?.Message ?? "No vision result";
+                VisionStatus = reason;
+                LastNgReason = reason;
+
+                if (result == null || !result.Success)
+                {
+                    SetVisionAlarm(reason);
+                }
+                else
+                {
+                    LastAlarmCode = GetAlarmCode(reason);
+                    AddLog($"Vision result = FAIL [{LastAlarmCode}]: {reason}");
+                }
             }
 
             return visionOk;

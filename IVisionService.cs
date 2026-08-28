@@ -1,9 +1,2 @@
 using System.Threading.Tasks;
-
-namespace FactorialApp
-{
-    public interface IVisionService
-    {
-        Task<VisionResult?> DetectAsync();
-    }
-}
+namespace FactorialApp { public interface IVisionService { Task<VisionResult?> DetectAsync(string imageName,string thresholdMode,int threshold,double minArea,double maxArea,double positionTolerance,double angleTolerance,double areaTolerancePercent); } }

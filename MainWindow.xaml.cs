@@ -9,10 +9,7 @@ namespace FactorialApp
             InitializeComponent();
 
             IVisionService visionService =
-                new TcpVisionService(
-                    "192.168.2.130",
-                    5001
-                );
+                new TcpVisionService("192.168.0.60", 5001);
 
             DataContext = new MainViewModel(visionService);
         }
